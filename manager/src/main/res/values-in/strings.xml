@@ -425,4 +425,9 @@
     <string name="action_install_other_user_prompt_app">Pilih pengguna untuk memasang aplikasi ini.</string>
     <string name="action_installed_other_user">Terpasang untuk %1$s.</string>
     <string name="action_install_other_user_failed">Tidak dapat memasang untuk %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks">Mode kompatibilitas hook inline ART</string>
+    <string name="action_invalidate_art_inline_hooks_summary">Membatalkan hook inline ART Vector secara global di setiap aplikasi yang dipilih, berapa pun jumlah modul atau hook yang menargetkannya. Beberapa modul mungkin berhenti bekerja, dan aplikasi dapat bermasalah atau mogok. Berlaku saat setiap aplikasi dimulai berikutnya.</string>
+    <string name="action_invalidate_art_inline_hooks_enabled">Kompatibilitas hook inline ART diaktifkan untuk %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_disabled">Kompatibilitas hook inline ART dinonaktifkan untuk %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_failed">Tidak dapat mengubah kompatibilitas hook inline ART untuk %1$s.</string>
 </resources>

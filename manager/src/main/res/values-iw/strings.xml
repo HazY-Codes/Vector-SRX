@@ -458,4 +458,9 @@
     <string name="action_install_other_user_prompt_app">בחר את המשתמש שעבורו להתקין את האפליקציה הזאת.</string>
     <string name="action_installed_other_user">הותקן עבור %1$s.</string>
     <string name="action_install_other_user_failed">לא ניתן היה להתקין עבור %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks">מצב תאימות Hook קוויים של ART</string>
+    <string name="action_invalidate_art_inline_hooks_summary">ביטול גלובלי של ה-hooks המוטמעים של ART של Vector בכל אפליקציה שנבחרה, ללא תלות במספר המודולים או ה-hooks שמכוונים אליה. חלק מהמודולים עשויים להפסיק לעבוד, ואפליקציות עלולות לפעול באופן שגוי או לקרוס. השינוי חל בהפעלה הבאה של כל אפליקציה.</string>
+    <string name="action_invalidate_art_inline_hooks_enabled">תאימות ה-hooks הקוויים של ART הופעלה עבור %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_disabled">תאימות ה-hooks הקוויים של ART הושבתה עבור %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_failed">לא ניתן היה לשנות את תאימות ה-hooks הקוויים של ART עבור %1$s.</string>
 </resources>

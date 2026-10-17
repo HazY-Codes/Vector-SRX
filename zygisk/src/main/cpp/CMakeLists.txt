@@ -10,6 +10,20 @@ add_subdirectory(${VECTOR_ROOT}/native native)
 add_library(${PROJECT_NAME} SHARED module.cpp ipc_bridge.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 
+# Restrict dynamic symbol visibility to the Zygisk ABI entry points so statically linked
+# LSPlant/Dobby/native symbols are not exposed in .dynsym to injected app processes.
+set(ZYGISK_EXPORT_MAP "${CMAKE_CURRENT_BINARY_DIR}/zygisk.exports.map")
+file(WRITE "${ZYGISK_EXPORT_MAP}" "{
+    global:
+        zygisk_module_entry;
+        zygisk_companion_entry;
+    local:
+        *;
+};
+")
+set_property(TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--version-script=${ZYGISK_EXPORT_MAP}")
+
 target_link_libraries(${PROJECT_NAME} native log)
 
 if (DEFINED DEBUG_SYMBOLS_PATH)

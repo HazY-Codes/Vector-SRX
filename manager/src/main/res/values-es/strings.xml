@@ -432,4 +432,9 @@
     <string name="action_install_other_user_prompt_app">Elige el usuario para el que instalar esta app.</string>
     <string name="action_installed_other_user">Instalado para %1$s.</string>
     <string name="action_install_other_user_failed">No se pudo instalar para %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks">Modo de compatibilidad de hooks inline de ART</string>
+    <string name="action_invalidate_art_inline_hooks_summary">Invalida globalmente los hooks inline de ART de Vector en cada app seleccionada, independientemente de cuántos módulos o hooks la utilicen. Algunos módulos pueden dejar de funcionar, y las apps pueden comportarse mal o bloquearse. Se aplica la próxima vez que se inicie cada app.</string>
+    <string name="action_invalidate_art_inline_hooks_enabled">Compatibilidad de hooks inline de ART habilitada para %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_disabled">Compatibilidad de hooks inline de ART deshabilitada para %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_failed">No se pudo cambiar la compatibilidad de hooks inline de ART para %1$s.</string>
 </resources>

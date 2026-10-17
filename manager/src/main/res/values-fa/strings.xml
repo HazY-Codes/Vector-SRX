@@ -432,4 +432,9 @@
     <string name="action_install_other_user_prompt_app">کاربری را که می‌خواهید این برنامه برایش نصب شود انتخاب کنید.</string>
     <string name="action_installed_other_user">برای %1$s نصب شد.</string>
     <string name="action_install_other_user_failed">نصب برای %1$s ممکن نشد.</string>
+    <string name="action_invalidate_art_inline_hooks">حالت سازگاری هوک درون‌خطی ART</string>
+    <string name="action_invalidate_art_inline_hooks_summary">هوک‌های درون‌خطی ART ویکتور را در هر برنامه انتخاب‌شده به‌صورت سراسری و مستقل از تعداد ماژول‌ها یا هوک‌های هدف‌گیرنده آن بی‌اعتبار می‌کند. برخی ماژول‌ها ممکن است از کار بیفتند و برنامه‌ها ممکن است دچار مشکل یا کرش شوند. در راه‌اندازی بعدی هر برنامه اعمال می‌شود.</string>
+    <string name="action_invalidate_art_inline_hooks_enabled">حالت سازگاری هوک درون‌خطی ART برای %1$s فعال شد.</string>
+    <string name="action_invalidate_art_inline_hooks_disabled">حالت سازگاری هوک درون‌خطی ART برای %1$s غیرفعال شد.</string>
+    <string name="action_invalidate_art_inline_hooks_failed">تغییر حالت سازگاری هوک درون‌خطی ART برای %1$s ممکن نبود.</string>
 </resources>

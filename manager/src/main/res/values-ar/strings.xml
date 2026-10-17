@@ -476,4 +476,9 @@
     <string name="action_install_other_user_prompt_app">اختر المستخدم الذي تريد تثبيت هذا التطبيق له.</string>
     <string name="action_installed_other_user">تم التثبيت لـ %1$s.</string>
     <string name="action_install_other_user_failed">تعذّر التثبيت لـ %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks">وضع توافق ربط ART المضمّن</string>
+    <string name="action_invalidate_art_inline_hooks_summary">إبطال روابط ART المضمّنة الخاصة بـ Vector عالميًا في كل تطبيق محدد، بغض النظر عن عدد الوحدات أو الروابط التي تستهدفه. قد تتوقف بعض الوحدات عن العمل، وقد تتعطل التطبيقات أو تنهار. يُطبّق عند التشغيل التالي لكل تطبيق.</string>
+    <string name="action_invalidate_art_inline_hooks_enabled">تم تفعيل توافق ربط ART المضمّن لـ %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_disabled">تم تعطيل توافق ربط ART المضمّن لـ %1$s.</string>
+    <string name="action_invalidate_art_inline_hooks_failed">تعذّر تغيير توافق ربط ART المضمّن لـ %1$s.</string>
 </resources>
