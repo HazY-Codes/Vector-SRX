@@ -20,6 +20,7 @@ on:
 
 jobs:
   synchronize-with-crowdin:
+    if: ${{ vars.ENABLE_CROWDIN == 'true' }}
     runs-on: ubuntu-latest
     steps:
     - name: Checkout

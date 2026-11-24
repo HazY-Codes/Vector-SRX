@@ -25,18 +25,19 @@ abstract class GitCommitCountValueSource : ValueSource<String, ValueSourceParame
     @get:Inject abstract val execOperations: ExecOperations
 
     override fun obtain(): String {
-        val output = ByteArrayOutputStream()
-        val result = execOperations.exec {
-            commandLine("git", "rev-list", "--count", "refs/remotes/origin/master")
-            standardOutput = output
-            isIgnoreExitValue = true
+        for (ref in listOf("refs/remotes/origin/master", "HEAD")) {
+            val output = ByteArrayOutputStream()
+            val result = execOperations.exec {
+                commandLine("git", "rev-list", "--count", ref)
+                standardOutput = output
+                errorOutput = ByteArrayOutputStream()
+                isIgnoreExitValue = true
+            }
+            if (result.exitValue == 0 && output.toString().isNotBlank()) {
+                return output.toString().trim()
+            }
         }
-        // Return the count if successful, otherwise a default of "1".
-        return if (result.exitValue == 0 && output.toString().isNotBlank()) {
-            output.toString().trim()
-        } else {
-            "1"
-        }
+        return "1"
     }
 }
 

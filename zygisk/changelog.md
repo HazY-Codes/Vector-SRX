@@ -1,21 +1,13 @@
-Vector 2.2 is a hotfix for 2.1, and it brings libxposed API 102 — where a module can be swapped out without taking the process down with it.
+**Vector-SRX** brings all of **Vector-SR**'s soft-reboot, reinjection, and ART compatibility enhancements forward onto the latest upstream **Vector v2.2** codebase (with the modern Jetpack Compose Manager and libxposed API 102).
 
-> [!IMPORTANT]
-> If you installed the manager as a separate app, uninstall it before updating: a 2.1 manager cannot talk to a 2.2 daemon. A parasitic manager needs nothing.
+### 🔄 Soft-Reboot & Late-Load Reliability
+*   **KernelSU Emulated Soft-Reboot & Private Shadow Isolation:** Cleans up surviving daemons, stale `/apex/.../bin/dex2oat*` bind mounts, and leaked shadows across `ksud soft-reboot`, while gating `/data/resource-cache` shadowing on a verified private mount namespace (`VECTOR_SHADOW_OK=1`) so RRO idmaps (`android.ext.services`) never blank out or boot-loop `system_server`.
+*   **Split-Brain Reinjection Ownership & Lease:** Ported Vector-SR's active reinjection owner and restart lease locks (`vectord` / `lspd` aware), atomic `bridgeBinder` death deduplication, thread-safe `ManagerGuard` invalidation, and a 20-second Zygisk `system_server` rendezvous window.
+*   **Live `system_server` Re-Attachment:** Reconnects an already-injected `system_server` and its loaded modern modules & remote preferences after a daemon restart without re-running module entrypoints or restarting Android.
+*   **Dual-Namespace `dex2oat` Recovery & Recursion Guard:** Unmounts/remounts `dex2oat` wrappers across both daemon and `init` mount namespaces, validates stock compiler inodes, adds a PID-scoped wrapper recursion guard, treats `dex2oatd` debug binaries as optional, and provides failure-only `--inline-max-code-units=0` property fallback.
 
-### 🩹 What 2.1 got wrong
-*   🪝 **No hooks in release builds.** Modules loaded, and then nothing happened. R8 had merged `XResources` into a shared class that `XposedHelpers.findClass` touches on its way in, and `XResources` cannot resolve until the device has generated its super class. One failure is permanent, so every `findClass` in `system_server` failed for the rest of the boot.
-*   🔗 **Canaries installed the wrong build.** Press install on a canary, get the newest release. The page is rebuilt around the builds themselves: each row a head commit, with its author, its pull request, and the issues closed since the build you are running.
-
-### 🔁 libxposed API 102
-Hot reload — a module's code replaced inside a process that is already running it. No more killing every process you are injected into to try a change, and no more reboot when the module hooks the system, taking with it the state you were trying to reproduce. Updates can reach processes still running the old code, if the module agrees to it. Around that: an entry class can step out of lifecycle callbacks while its siblings carry on, hookers swap atomically, and a module targeting 102 leaves the legacy API alone.
-
-### 👥 One module, one configuration
-A module is one package and one binary for the whole device, so its configuration belongs to the package; only its presence varies per user. Nothing enforced that, and a module installed in one user could run inside another user's applications. It now runs only in the users that installed it — `system_server` excepted, since it belongs to none of them.
-
-### 🧹 Everything else
-The IPC interfaces moved into Vector's own namespace, and the refactor shook out a run of unrelated bugs: JNI exceptions left pending across the native boundary, one of which left a process without Xposed while the log announced success; "Install as an app" going green for a copy that was a different build; an unbounded wait on a binder thread; a health flag latched before the work it reports. And the monochrome icon now carries the statue's own line work, so the themed launcher icon finally says what it is.
-
----
-
-*The two fixes at the top exist because you reported them. Thank you — please keep telling us what breaks.*
+### 🛡️ ART Hooking & OEM ROM Compatibility
+*   **Per-App ART Inline-Hook Compatibility Mode:** Opt-in central app picker in the Compose Manager (`System Status -> ART inline hook compatibility mode`) that invalidates Vector's temporary `libart.so` inline hooks after framework bootstrap while hiding internal `.dynsym` exports in `libzygisk.so`.
+*   **OEM ARM64 Veneer Unwrapping:** Unwraps 16-byte OEM `libart.so` hotpatch trampolines (`ldr x16/17, pc+8; br x16/17`) before Dobby inline hooking to prevent infinite recursion in `system_server`.
+*   **Samsung One UI 8.5 / 9 Shared-UID Hotfix:** Bypasses legacy hook callbacks around `ApplicationPackageManager#getApplicationInfoAsUser("android.uid.system")` to prevent post-soft-reboot `VectorLegacyBridge` log and CPU storms.
+*   **System Scope Normalization & Hot-Reload Cleanup:** Normalizes `android` and `system` scope spellings so CLI/libxposed system-scoped modules always dispatch `onSystemServerStarting`, and releases retired API 102 hot-reload DEX mappings and callbacks.
