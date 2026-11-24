@@ -1,13 +1,28 @@
-# Extract the directory path and change directory 
+#!/system/bin/sh
+# Extract the directory path and change directory
 MODDIR="${0%/*}"
 cd "$MODDIR" || exit 1
 
-# A root manager runs this script with its own busybox, but a manual bootstrap has nothing in
-# front of it except Android's utilities, so this is written for toybox's unshare: it makes a
-# mount namespace with -m and takes no propagation flag. The namespace therefore marks its own
-# root slave before handing over, which is what keeps the daemon's dex2oat bind-mounts out of
-# the global one.
-unshare -m /system/bin/sh -c '
-    mount -o rslave none / || echo "vector: this mount namespace stays shared" >&2
-    exec "$0" "$@"
-' "$MODDIR/daemon" "$@" &
+# KernelSU replays service.sh after an emulated soft reboot. Clean up any old
+# surviving daemon and stale compiler mounts before launching the replacement.
+if [ "$KSU" = true ]; then
+  sh "$MODDIR/emulated-soft-reboot.sh"
+fi
+
+# The daemon shadows /data/resource-cache only inside a confirmed private mount
+# namespace (VECTOR_SHADOW_OK=1). Leaking a shadow into the global mount
+# namespace hides framework-res RRO idmaps (such as android.ext.services on GMS
+# ROMs) and causes a system_server PMS boot loop across soft reboots.
+if unshare -m true 2>/dev/null; then
+  unshare -m /system/bin/sh -c '
+      if mount -o rslave none / 2>/dev/null; then
+        VECTOR_SHADOW_OK=1 exec "$0" "$@"
+      else
+        echo "vector: mount namespace stays shared; daemon starts without resource-cache shadow" >&2
+        VECTOR_NO_SHADOW=1 exec "$0" "$@"
+      fi
+  ' "$MODDIR/daemon" "$@" &
+else
+  echo "vector: no private mount namespace available; daemon starts without resource-cache shadow" >&2
+  VECTOR_NO_SHADOW=1 "$MODDIR/daemon" "$@" &
+fi

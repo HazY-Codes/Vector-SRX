@@ -82,7 +82,7 @@ esac
 ui_print "- Device platform: $ARCH ($ABI32 / $ABI64)"
 
 ui_print "- Extracting root module files"
-for file in module.prop action.sh service.sh uninstall.sh sepolicy.rule framework/vector.dex cli daemon.apk daemon manager.apk; do
+for file in module.prop action.sh post-fs-data.sh emulated-soft-reboot.sh service.sh uninstall.sh sepolicy.rule framework/vector.dex cli daemon.apk daemon manager.apk; do
     extract "$ZIPFILE" "$file" "$MODPATH"
 done
 
@@ -133,6 +133,8 @@ set_perm_recursive "$MODPATH" 0 0 0755 0644
 
 set_perm "$MODPATH/daemon" 0 0 0744
 set_perm "$MODPATH/cli" 0 0 0744
+set_perm "$MODPATH/post-fs-data.sh" 0 0 0744
+set_perm "$MODPATH/emulated-soft-reboot.sh" 0 0 0744
 
 if [ "$(grep_prop ro.maple.enable)" = "1" ]; then
     ui_print "- Add ro.maple.enable=0"

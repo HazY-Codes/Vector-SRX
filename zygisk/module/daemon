@@ -30,11 +30,14 @@ fi
 # framework idmaps of this boot into the cache every other process shares. Bind an empty directory
 # rather than a tmpfs: a bind mount reuses the superblock of /data, so it claims none of the
 # kernel-global anonymous device minors, whose gaps are visible from any process on the device.
-# Note that this script runs inside an isolated mount namespace (via unshare).
-emptyDir="$dir/.resource-cache"
-rm -rf "$emptyDir"
-mkdir -p "$emptyDir"
-mount -o bind "$emptyDir" /data/resource-cache
+# Only shadow /data/resource-cache when service.sh has verified a private mount namespace
+# (VECTOR_SHADOW_OK=1). Mounting in the global namespace hides RRO idmap files from system_server.
+if [ "$VECTOR_SHADOW_OK" = "1" ]; then
+  emptyDir="$dir/.resource-cache"
+  rm -rf "$emptyDir"
+  mkdir -p "$emptyDir"
+  mount -o bind "$emptyDir" /data/resource-cache
+fi
 
 # Wait for Zygote socket using a polling loop
 if [ ! -S "/dev/socket/zygote" ]; then
