@@ -98,13 +98,14 @@ private object ServiceRegistrationWatcher {
  */
 object SystemServerService : Binder(), IBinder.DeathRecipient {
 
+  private val serviceLock = Any()
   private var proxyServiceName: String? = null
   private var originService: IBinder? = null
 
   val systemServerRequested: Boolean
     get() = FrameworkService.isSystemServerRegistered()
 
-  fun registerProxyService(serviceName: String) {
+  fun registerProxyService(serviceName: String): Boolean {
     // Register as the service name early to setup an IPC for `system_server`.
     Log.d(TAG, "Registering bridge service for `system_server` with name `$serviceName`.")
 
@@ -116,11 +117,24 @@ object SystemServerService : Binder(), IBinder.DeathRecipient {
 
     // The Zygisk module polls this name during `system_server` specialization,
     // so it must be claimed on every supported platform.
-    runCatching {
+    return runCatching {
           ServiceManager.addService(serviceName, this)
-          proxyServiceName = serviceName
+          synchronized(serviceLock) { proxyServiceName = serviceName }
+          true
         }
         .onFailure { Log.e(TAG, "Failed to register proxy service `$serviceName`", it) }
+        .getOrDefault(false)
+  }
+
+  /**
+   * Clears dead origin-service state and reclaims the rendezvous name during soft restart.
+   */
+  fun prepareForSystemServerRestart(serviceName: String, instanceId: String, round: Long) {
+    Log.i(
+        TAG,
+        "Preparing system_server rendezvous `$serviceName` for daemon `$instanceId` (round=$round)")
+    clearOriginService()
+    registerProxyService(serviceName)
   }
 
   /**
@@ -133,19 +147,27 @@ object SystemServerService : Binder(), IBinder.DeathRecipient {
    */
   fun unregisterProxyService() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-    val name = proxyServiceName ?: return
+    val name = synchronized(serviceLock) { proxyServiceName } ?: return
     ServiceRegistrationWatcher.unregisterWhenUnused(name, this)
   }
 
   /**
    * Adopts the real system service once servicemanager reports its registration, so that
-   * [onTransact] starts forwarding to it. Only ever called from [ServiceRegistrationWatcher].
+   * [onTransact] starts forwarding non-Vector transactions to it.
    */
   internal fun adoptOriginService(name: String, binder: IBinder) {
     if (binder === this) return
     Log.d(TAG, "Intercepted system service registration with name `$name`")
-    originService = binder
-    runCatching { binder.linkToDeath(this, 0) }
+    synchronized(serviceLock) {
+      if (originService === binder) return
+      originService?.let { prev -> runCatching { prev.unlinkToDeath(this, 0) } }
+      originService = binder
+      runCatching { binder.linkToDeath(this, 0) }
+          .onFailure {
+            Log.w(TAG, "Could not watch real `$name` service", it)
+            originService = null
+          }
+    }
   }
 
   /**
@@ -174,13 +196,6 @@ object SystemServerService : Binder(), IBinder.DeathRecipient {
   }
 
   override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-    originService?.let {
-      // This is unlikely to happen unless system_server restarts / crashes, since we intentionally
-      // discard our proxy upon later replacements in registerProxyService.
-      Log.d(TAG, "Forwarding request to real `$proxyServiceName` service.")
-      return it.transact(code, data, reply, flags)
-    }
-
     when (code) {
       BRIDGE_TRANSACTION_CODE -> {
         val uid = data.readInt()
@@ -201,13 +216,28 @@ object SystemServerService : Binder(), IBinder.DeathRecipient {
         return FrameworkService.onTransact(code, data, reply, flags)
       }
       else -> {
+        val (origin, name) = synchronized(serviceLock) { originService to proxyServiceName }
+        origin?.let {
+          // Handle Vector handshake/bootstrap codes above first; forward only real service calls.
+          Log.d(TAG, "Forwarding request to real `$name` service.")
+          return it.transact(code, data, reply, flags)
+        }
         return super.onTransact(code, data, reply, flags)
       }
     }
   }
 
+  private fun clearOriginService() {
+    val prev =
+        synchronized(serviceLock) {
+          val current = originService
+          originService = null
+          current
+        }
+    prev?.let { runCatching { it.unlinkToDeath(this, 0) } }
+  }
+
   override fun binderDied() {
-    originService?.unlinkToDeath(this, 0)
-    originService = null
+    clearOriginService()
   }
 }

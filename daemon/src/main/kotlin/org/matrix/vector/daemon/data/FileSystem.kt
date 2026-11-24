@@ -19,6 +19,8 @@ import java.io.FileInputStream
 import java.io.InputStream
 import java.nio.channels.Channels
 import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -28,6 +30,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Properties
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -38,6 +41,8 @@ import org.matrix.vector.daemon.BuildConfig
 import org.matrix.vector.daemon.utils.ObfuscationManager
 
 private const val TAG = "VectorFileSystem"
+private const val PRIVATE_FILE_MODE = 0x180 // 0600
+private const val PRIVATE_DIR_MODE = 0x1C0 // 0700
 
 /**
  * What the module installer labels the module tree, and what [FileSystem] holds it to.
@@ -88,6 +93,46 @@ object FileSystem {
 
   private val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.systemDefault())
   private val lockPath: Path = basePath.resolve("lock")
+  private val reinjectionOwnerPath: Path = basePath.resolve("vector_reinjection_owner")
+  private val reinjectionOwnerLockPath: Path = basePath.resolve("vector_reinjection_owner.lock")
+  private val reinjectionRestartLockPath: Path = basePath.resolve("vector_reinjection_restart.lock")
+  private val reinjectionRound = AtomicLong(0)
+
+  data class ReinjectionOwner(val instanceId: String, val pid: Int, val claimedAtMillis: Long) {
+    fun toLogString(): String = "$instanceId(pid=$pid, claimedAt=$claimedAtMillis)"
+  }
+
+  data class ReinjectionOwnerState(val isOwner: Boolean, val owner: ReinjectionOwner?)
+
+  enum class ReinjectionLeaseStatus {
+    ACQUIRED,
+    BUSY,
+    NOT_OWNER,
+  }
+
+  class ReinjectionLease
+  internal constructor(
+      val round: Long,
+      private val channel: FileChannel,
+      private val lock: FileLock
+  ) : AutoCloseable {
+    @Volatile private var closed = false
+
+    override fun close() {
+      synchronized(this) {
+        if (closed) return
+        closed = true
+        runCatching { lock.release() }
+        runCatching { channel.close() }
+      }
+    }
+  }
+
+  data class ReinjectionLeaseResult(
+      val status: ReinjectionLeaseStatus,
+      val owner: ReinjectionOwner?,
+      val lease: ReinjectionLease? = null,
+  )
 
   init {
     runCatching {
@@ -173,6 +218,7 @@ object FileSystem {
    */
   fun tryLock(): Boolean {
     return runCatching {
+          preparePrivateFile(lockPath)
           val permissions =
               PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
           val channel =
@@ -195,6 +241,64 @@ object FileSystem {
           true
         }
         .getOrDefault(false)
+  }
+
+  fun createDaemonInstanceId(): String = "${Process.myPid()}@${System.currentTimeMillis()}"
+
+  fun ensureActiveReinjectionOwner(instanceId: String): ReinjectionOwnerState {
+    return withRootFileAccess {
+      withReinjectionMetadataLock { ensureActiveReinjectionOwnerLocked(instanceId) }
+    }
+  }
+
+  fun tryAcquireReinjectionLease(instanceId: String): ReinjectionLeaseResult {
+    return withRootFileAccess {
+      preparePrivateFile(reinjectionRestartLockPath)
+      val channel =
+          runCatching {
+                FileChannel.open(
+                    reinjectionRestartLockPath,
+                    setOf(StandardOpenOption.CREATE, StandardOpenOption.WRITE))
+              }
+              .onFailure { Log.e(TAG, "Failed to open reinjection restart lock", it) }
+              .getOrNull()
+              ?: return@withRootFileAccess ReinjectionLeaseResult(
+                  ReinjectionLeaseStatus.BUSY, readActiveReinjectionOwner())
+
+      val lock =
+          try {
+            channel.tryLock()
+          } catch (_: OverlappingFileLockException) {
+            null
+          } catch (t: Throwable) {
+            Log.w(TAG, "Failed to acquire reinjection restart lock", t)
+            null
+          }
+
+      if (lock == null) {
+        runCatching { channel.close() }
+        return@withRootFileAccess ReinjectionLeaseResult(
+            ReinjectionLeaseStatus.BUSY, readActiveReinjectionOwner())
+      }
+
+      lateinit var currentOwnerState: ReinjectionOwnerState
+      withReinjectionMetadataLock {
+        currentOwnerState = ensureActiveReinjectionOwnerLocked(instanceId)
+      }
+
+      if (!currentOwnerState.isOwner) {
+        runCatching { lock.release() }
+        runCatching { channel.close() }
+        return@withRootFileAccess ReinjectionLeaseResult(
+            ReinjectionLeaseStatus.NOT_OWNER, currentOwnerState.owner)
+      }
+
+      val round = reinjectionRound.incrementAndGet()
+      ReinjectionLeaseResult(
+          ReinjectionLeaseStatus.ACQUIRED,
+          currentOwnerState.owner,
+          ReinjectionLease(round, channel, lock))
+    }
   }
 
   /** Clears all special file attributes (like immutable) on a directory. */
@@ -749,4 +853,170 @@ object FileSystem {
   // Matches the manager's leading-integer parsing, including values such as "101.0".
   private fun leadingInt(value: String?): Int =
       value?.trim()?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 0
+
+  private fun readActiveReinjectionOwner(): ReinjectionOwner? {
+    return withRootFileAccess { withReinjectionMetadataLock { readReinjectionOwnerLocked() } }
+  }
+
+  private inline fun <T> withReinjectionMetadataLock(block: () -> T): T {
+    preparePrivateFile(reinjectionOwnerLockPath)
+    val channel =
+        FileChannel.open(
+            reinjectionOwnerLockPath,
+            setOf(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE))
+    channel.use { lockedChannel ->
+      val lock = lockedChannel.lock()
+      try {
+        return block()
+      } finally {
+        runCatching { lock.release() }
+      }
+    }
+  }
+
+  private fun ensureActiveReinjectionOwnerLocked(instanceId: String): ReinjectionOwnerState {
+    val currentOwner = readReinjectionOwnerLocked()
+    val pid = Process.myPid()
+    if (currentOwner?.instanceId == instanceId && currentOwner.pid == pid) {
+      return ReinjectionOwnerState(true, currentOwner)
+    }
+    if (currentOwner != null && isDaemonOwnerAlive(currentOwner)) {
+      return ReinjectionOwnerState(false, currentOwner)
+    }
+
+    val newOwner = ReinjectionOwner(instanceId, pid, System.currentTimeMillis())
+    if (!writeReinjectionOwnerLocked(newOwner)) {
+      Log.e(TAG, "Failed to claim reinjection ownership for `${newOwner.toLogString()}`")
+      return ReinjectionOwnerState(false, currentOwner)
+    }
+    Log.i(
+        TAG,
+        "Reinjection owner changed from `${currentOwner?.toLogString() ?: "none"}` " +
+            "to `${newOwner.toLogString()}`")
+    return ReinjectionOwnerState(true, newOwner)
+  }
+
+  private fun readReinjectionOwnerLocked(): ReinjectionOwner? {
+    if (!reinjectionOwnerPath.exists()) return null
+    return runCatching {
+          Files.newBufferedReader(reinjectionOwnerPath).use { reader ->
+            parseReinjectionOwner(reader.readLine())
+          }
+        }
+        .onFailure { Log.w(TAG, "Failed to read reinjection owner state", it) }
+        .getOrNull()
+  }
+
+  private fun writeReinjectionOwnerLocked(owner: ReinjectionOwner): Boolean {
+    preparePrivateFile(reinjectionOwnerPath)
+    return runCatching {
+          Files.newBufferedWriter(
+                  reinjectionOwnerPath,
+                  StandardOpenOption.CREATE,
+                  StandardOpenOption.TRUNCATE_EXISTING,
+                  StandardOpenOption.WRITE)
+              .use { writer ->
+                writer.write(
+                    listOf(
+                            owner.instanceId,
+                            owner.pid.toString(),
+                            owner.claimedAtMillis.toString())
+                        .joinToString("|"))
+              }
+          true
+        }
+        .onFailure { Log.e(TAG, "Failed to persist reinjection owner state", it) }
+        .getOrDefault(false)
+  }
+
+  private fun parseReinjectionOwner(raw: String?): ReinjectionOwner? {
+    val value = raw?.trim().orEmpty()
+    if (value.isEmpty()) return null
+    val parts = value.split('|')
+    if (parts.size != 3) return null
+    val pid = parts[1].toIntOrNull() ?: return null
+    val claimedAt = parts[2].toLongOrNull() ?: return null
+    return ReinjectionOwner(parts[0], pid, claimedAt)
+  }
+
+  private fun isDaemonOwnerAlive(owner: ReinjectionOwner): Boolean {
+    if (!isPidAlive(owner.pid)) return false
+    if (isExpectedDaemonProcess(owner.pid)) return true
+
+    Log.w(TAG, "Ignoring stale reinjection owner `${owner.toLogString()}`: PID was reused")
+    return false
+  }
+
+  private fun isPidAlive(pid: Int): Boolean {
+    if (pid <= 0) return false
+
+    val procVisible = Files.exists(Paths.get("/proc/$pid"))
+    return runCatching {
+          Os.kill(pid, 0)
+          true
+        }
+        .recover { e ->
+          if (e is ErrnoException) {
+            when (e.errno) {
+              OsConstants.ESRCH -> false
+              OsConstants.EPERM -> true
+              else -> procVisible
+            }
+          } else {
+            procVisible
+          }
+        }
+        .getOrDefault(procVisible)
+  }
+
+  private fun isExpectedDaemonProcess(pid: Int): Boolean {
+    val cmdlinePath = Paths.get("/proc/$pid/cmdline")
+    return runCatching {
+          val cmdline =
+              String(Files.readAllBytes(cmdlinePath))
+                  .trimEnd('\u0000')
+                  .replace('\u0000', ' ')
+          cmdline == "vectord" ||
+              cmdline.endsWith("/vectord") ||
+              cmdline == "lspd" ||
+              cmdline.endsWith("/lspd") ||
+              cmdline.contains("org.matrix.vector.daemon.VectorDaemon")
+        }
+        .getOrDefault(false)
+  }
+
+  private inline fun <T> withRootFileAccess(block: () -> T): T {
+    val originalEuid = runCatching { Os.geteuid() }.getOrDefault(0)
+    val switched = originalEuid != 0 && runCatching { Os.seteuid(0) }.isSuccess
+    try {
+      return block()
+    } finally {
+      if (switched) {
+        runCatching { Os.seteuid(originalEuid) }
+            .onFailure { Log.w(TAG, "Failed to restore euid to $originalEuid", it) }
+      }
+    }
+  }
+
+  private fun preparePrivateFile(path: Path) {
+    runCatching {
+          val parent = path.parent
+          if (parent != null && !parent.exists()) {
+            Files.createDirectories(parent)
+            Os.chmod(parent.toString(), PRIVATE_DIR_MODE)
+            SELinux.setFileContext(parent.toString(), SYSTEM_FILE_CONTEXT)
+          }
+
+          val file = path.toFile()
+          if (!file.exists()) {
+            file.createNewFile()
+          }
+
+          Os.chmod(path.toString(), PRIVATE_FILE_MODE)
+          if (SELinux.getFileContext(path.toString()) != SYSTEM_FILE_CONTEXT) {
+            SELinux.setFileContext(path.toString(), SYSTEM_FILE_CONTEXT)
+          }
+        }
+        .onFailure { Log.w(TAG, "Failed to prepare private file $path", it) }
+  }
 }
