@@ -138,6 +138,13 @@ public final class XposedBridge {
      * @param t The Throwable object for the stack trace.
      */
     public synchronized static void log(Throwable t) {
+        // Safety net for the Samsung shared-UID probe described in LegacyDelegateImpl:
+        // suppress only this exact expected NameNotFoundException while keeping all other logs.
+        if (t != null
+                && "android.content.pm.PackageManager$NameNotFoundException".equals(t.getClass().getName())
+                && "android.uid.system".equals(t.getMessage())) {
+            return;
+        }
         // Written out in full because this file also imports android.util.Log, and it is the
         // framework's own that is wanted: the platform's returns an empty string for any
         // UnknownHostException cause chain, so a module logging a failed request landed an empty

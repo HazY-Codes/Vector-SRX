@@ -64,6 +64,22 @@ public class LegacyDelegateImpl implements LegacyFrameworkDelegate {
 
     @Override
     public Object processLegacyHook(Executable executable, Object thisObject, Object[] args, Object[] legacyHooks, OriginalInvoker invokeOriginal) {
+        // Samsung One UI 8.5/9 framework probes the shared UID name "android.uid.system" via
+        // ApplicationPackageManager#getApplicationInfoAsUser(), expecting NameNotFoundException.
+        // Running legacy callbacks around this probe after a soft restart can trigger a hot
+        // exception/log storm in system_server. Bypass only this exact pseudo-package lookup.
+        if ("getApplicationInfoAsUser".equals(executable.getName())
+                && args != null
+                && args.length > 0
+                && "android.uid.system".equals(args[0])) {
+            try {
+                return invokeOriginal.invoke();
+            } catch (Throwable t) {
+                sneakyThrow(t);
+                return null;
+            }
+        }
+
         VectorLegacyCallback<Executable> callback = new VectorLegacyCallback<>(executable, thisObject, args);
         XposedBridge.LegacyApiSupport<Executable> legacy = new XposedBridge.LegacyApiSupport<>(callback, legacyHooks);
 
