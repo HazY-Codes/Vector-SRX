@@ -19,6 +19,8 @@ target_include_directories(xz_static PRIVATE ${XZ_INCLUDES})
 option(LSPLANT_BUILD_SHARED OFF)
 option(Plugin.SymbolResolver OFF)
 option(FMT_INSTALL OFF)
+set(CMAKE_CXX_MODULE_STD OFF)
+set(FMT_MODULE OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(dobby)
 add_subdirectory(fmt)

@@ -220,10 +220,12 @@ int main(int argc, char **argv) {
     // Clear LD_LIBRARY_PATH to let the linker use internal config
     unsetenv("LD_LIBRARY_PATH");
 
-    // Set LD_PRELOAD to point to the hooker library FD
-    std::string preload_val = "LD_PRELOAD=/proc/self/fd/" + std::to_string(hooker_fd);
-    LOGD("Inject oat hook via %s", preload_val.data());
-    setenv("LD_PRELOAD", ("/proc/self/fd/" + std::to_string(hooker_fd)).c_str(), 1);
+    // Set LD_PRELOAD to point to the hooker library FD when available
+    if (hooker_fd >= 0) {
+        std::string preload_val = "LD_PRELOAD=/proc/self/fd/" + std::to_string(hooker_fd);
+        LOGD("Inject oat hook via %s", preload_val.data());
+        setenv("LD_PRELOAD", ("/proc/self/fd/" + std::to_string(hooker_fd)).c_str(), 1);
+    }
 
     // Pass original argv[0] as DEX2OAT_CMD
     if (argv[0]) {

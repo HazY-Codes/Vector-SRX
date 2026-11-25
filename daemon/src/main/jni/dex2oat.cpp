@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <sched.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mount.h>
 #include <sys/wait.h>
 #include <unistd.h>

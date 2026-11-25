@@ -303,6 +303,8 @@ subprojects {
                 val args =
                     listOf(
                         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+                        "-DCMAKE_CXX_MODULE_STD=OFF",
+                        "-DFMT_MODULE=OFF",
                         "-DVECTOR_ROOT=${rootDir.absolutePath}",
                         // Enforce 16 KB page size alignment for Android 15+ compatibility
                         "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384",

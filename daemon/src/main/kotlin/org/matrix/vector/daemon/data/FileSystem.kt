@@ -985,6 +985,7 @@ object FileSystem {
         .getOrDefault(false)
   }
 
+  @Suppress("DEPRECATION")
   private inline fun <T> withRootFileAccess(block: () -> T): T {
     val originalEuid = runCatching { Os.geteuid() }.getOrDefault(0)
     val switched = originalEuid != 0 && runCatching { Os.seteuid(0) }.isSuccess

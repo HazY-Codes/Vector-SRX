@@ -373,6 +373,7 @@ object VectorDaemon {
     kotlin.system.exitProcess(0)
   }
 
+  @Suppress("DEPRECATION")
   private inline fun <T> withRootIdentity(block: () -> T): T {
     val originalEuid = runCatching { Os.geteuid() }.getOrDefault(0)
     val switched = originalEuid != 0 && runCatching { Os.seteuid(0) }.isSuccess
