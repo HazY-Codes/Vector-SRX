@@ -304,6 +304,7 @@ subprojects {
                     listOf(
                         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
                         "-DCMAKE_CXX_MODULE_STD=OFF",
+                        "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",
                         "-DFMT_MODULE=OFF",
                         "-DVECTOR_ROOT=${rootDir.absolutePath}",
                         // Enforce 16 KB page size alignment for Android 15+ compatibility

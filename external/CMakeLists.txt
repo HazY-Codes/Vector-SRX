@@ -20,6 +20,7 @@ option(LSPLANT_BUILD_SHARED OFF)
 option(Plugin.SymbolResolver OFF)
 option(FMT_INSTALL OFF)
 set(CMAKE_CXX_MODULE_STD OFF)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(FMT_MODULE OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(dobby)
